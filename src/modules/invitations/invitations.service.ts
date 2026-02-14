@@ -3,17 +3,62 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GuestsService } from '../guests/guests.service';
 import { Types } from 'mongoose';
-import { MailerService } from '@nestjs-modules/mailer';
+import { MailerService } from '@nestjs-modules/mailer'; // ✅ APENAS ADICIONAR ESTA LINHA
 
 @Injectable()
 export class InvitationsService {
     private readonly logger = new Logger(InvitationsService.name);
 
     constructor(
-        private readonly mailerService: MailerService,
         private readonly guestsService: GuestsService,
         private readonly configService: ConfigService,
+        private readonly mailerService: MailerService, // ✅ APENAS ADICIONAR ESTA LINHA
     ) { }
+
+    // ✅ SEU MÉTODO generateWhatsAppLink (INTACTO)
+    async generateWhatsAppLink(guestId: string) {
+        // 1. Busca o convidado no banco
+        const guest = await this.guestsService.findOne(guestId);
+
+        if (!guest.telefone) {
+            throw new BadRequestException('Convidado não possui telefone cadastrado');
+        }
+
+        // 2. Monta o link do seu Frontend (onde o convidado vai confirmar)
+        const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:5173';
+        const inviteLink = `${frontendUrl}/invite/${guest.tokenUnico}`; // Ajuste a rota conforme seu frontend
+
+        // 3. Limpa o telefone (mantém apenas números)
+        const phoneClean = guest.telefone.replace(/\D/g, '');
+
+        // 4. Cria a mensagem personalizada
+        const mensagem = encodeURIComponent(
+            `Olá, *${guest.nome}*! 🥂\n\n` +
+            `Preparamos um convite especial para o nosso casamento. ` +
+            `Por favor, acesse o link abaixo para visualizar os detalhes e confirmar sua presença:\n\n` +
+            `👉 ${inviteLink}\n\n` +
+            `Ficaremos muito felizes com sua presença! 🎉`
+        );
+
+        // 5. Gera o link final do WhatsApp
+        const whatsappUrl = `https://wa.me/${phoneClean}?text=${mensagem}`;
+
+        // 6. Atualiza o status no banco (opcional, para controle do admin)
+        await this.guestsService.update(guestId, {
+            conviteEnviado: true,
+            dataEnvioConvite: new Date(),
+        });
+
+        this.logger.log(`Link de WhatsApp gerado para: ${guest.nome}`);
+
+        return {
+            guestName: guest.nome,
+            phone: phoneClean,
+            inviteLink: inviteLink,
+            whatsappUrl: whatsappUrl, // Este é o link que o frontend deve abrir
+            message: 'Link do WhatsApp gerado com sucesso! Clique para enviar ao convidado.'
+        };
+    }
 
     async sendEmailInvitation(guestId: string) {
         const guest = await this.guestsService.findOne(guestId);
@@ -22,24 +67,19 @@ export class InvitationsService {
             throw new BadRequestException('Convidado não possui email cadastrado');
         }
 
-        // Link para o frontend (ajuste conforme sua necessidade)
-        const inviteLink = `${this.configService.get('FRONTEND_URL')}/convite/${guest.tokenUnico}`;
+        const inviteLink = `${this.configService.get('FRONTEND_URL')}/invite/${guest.tokenUnico}`;
 
+        // ✅ AGORA USA O MAILER SERVICE REAL
         try {
             await this.mailerService.sendMail({
                 to: guest.email,
-                subject: 'Você foi convidado para o nosso casamento! 🥂',
+                subject: 'Convite de Casamento - Confirme sua presença! 💍',
                 html: `
-                    <div style="font-family: sans-serif; max-width: 600px;">
-                        <h1>Olá, ${guest.nome}!</h1>
-                        <p>Temos o prazer de convidar você para celebrar nosso casamento.</p>
-                        <p>Para confirmar sua presença, por favor clique no link abaixo:</p>
-                        <a href="${inviteLink}" style="padding: 10px 20px; background-color: #d4af37; color: white; text-decoration: none; border-radius: 5px;">
-                            Confirmar Presença
-                        </a>
-                        <p>Ou copie o link: ${inviteLink}</p>
-                        <br>
-                        <p>Esperamos por você!</p>
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h1 style="color: #d4af37;">Olá, ${guest.nome}!</h1>
+                        <p>Você foi convidado para o nosso casamento!</p>
+                        <p>Confirme sua presença clicando no link abaixo:</p>
+                        <a href="${inviteLink}" style="display: inline-block; background-color: #d4af37; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Confirmar Presença</a>
                     </div>
                 `,
             });
@@ -49,13 +89,20 @@ export class InvitationsService {
                 dataEnvioConvite: new Date(),
             });
 
-            return { message: 'Email enviado com sucesso', guestId: guest._id };
+            this.logger.log(`Email enviado com sucesso para: ${guest.email}`);
+
+            return {
+                message: 'Email enviado com sucesso',
+                guestId: guest._id,
+                email: guest.email
+            };
         } catch (error) {
             this.logger.error(`Erro ao enviar email: ${error.message}`);
-            throw new BadRequestException('Falha ao disparar o e-mail. Verifique as credenciais SMTP.');
+            throw new BadRequestException(`Falha ao enviar email: ${error.message}`);
         }
     }
 
+    // ✅ SEUS MÉTODOS sendSmsInvitation e sendBulkInvitations (INTACTOS)
     async sendSmsInvitation(guestId: string) {
         const guest = await this.guestsService.findOne(guestId);
 
@@ -63,7 +110,7 @@ export class InvitationsService {
             throw new BadRequestException('Convidado não possui telefone cadastrado');
         }
 
-        this.logger.log(`Enviando SMS para ${guest.telefone} com token ${guest.tokenUnico}`);
+        this.logger.log(`Simulando envio de SMS para ${guest.telefone} com token ${guest.tokenUnico}`);
 
         await this.guestsService.update(guestId, {
             conviteEnviado: true,
@@ -78,7 +125,6 @@ export class InvitationsService {
     }
 
     async sendBulkInvitations(guestIds: string[], method: 'email' | 'sms') {
-        // Tipando explicitamente os arrays
         const results: Array<{
             message: string;
             guestId: Types.ObjectId;

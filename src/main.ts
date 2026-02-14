@@ -9,8 +9,9 @@ async function bootstrap() {
 
   // Configurar CORS
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3001',
-    credentials: true,
+    origin: true, // Permite qualquer origem (*)
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true, // Permite cookies/headers de autorização
   });
 
   // Configurar validação global
@@ -21,9 +22,9 @@ async function bootstrap() {
   }));
 
   // Prefixo global para API
-  app.setGlobalPrefix('api');
+  // app.setGlobalPrefix('api');
 
-  await app.listen(process.env.PORT || 3000);
-  console.log(`Aplicação rodando na porta ${process.env.PORT || 3000}`);
+  await app.listen(process.env.PORT || 3001);
+  console.log(`Aplicação rodando na porta ${process.env.PORT || 3001}`);
 }
 bootstrap();
