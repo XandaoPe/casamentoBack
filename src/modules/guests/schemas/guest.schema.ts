@@ -1,14 +1,11 @@
-// modules/guests/schemas/guest.schema.ts
+// src/modules/guests/schemas/guest.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
 export type GuestDocument = Guest & Document;
 
-@Schema({
-    timestamps: true,
-    collection: 'guests' // Isso define o nome da "tabela" dentro do db casamento
-})
+@Schema({ timestamps: true })
 export class Guest {
     @Prop({ required: true })
     nome: string;
@@ -19,7 +16,7 @@ export class Guest {
     @Prop({ required: true })
     telefone: string;
 
-    @Prop({ required: true, unique: true, default: () => uuidv4() }) // Use função anônima para gerar novo a cada insert
+    @Prop({ required: true, unique: true, default: uuidv4 })
     tokenUnico: string;
 
     @Prop({ default: false })
@@ -46,11 +43,44 @@ export class Guest {
     @Prop()
     dataEnvioConvite: Date;
 
-    @Prop({ type: Object, default: {} })
+    // NOVOS CAMPOS
+    @Prop({ type: Array })
+    acompanhantes?: Array<{
+        nome: string;
+        idade?: number;
+        restricaoAlimentar?: string[];
+    }>;
+
+    @Prop({ type: Object })
+    presenteSelecionado?: {
+        presenteId: string;
+        nome: string;
+        valor: number;
+        quantidade: number;
+    };
+
+    @Prop({ type: Array })
+    visualizacoes?: Array<{
+        data: Date;
+        ip?: string;
+        userAgent?: string;
+    }>;
+
+    @Prop()
+    ultimoAcesso?: Date;
+
+    @Prop({ default: false })
+    tokenUtilizado: boolean;
+
+    @Prop()
+    tokenExpiraEm?: Date;
+
+    @Prop({ type: Object })
     metadata: {
+        visualizacoes?: number;
         ipConfirmacao?: string;
         userAgent?: string;
-        visualizacoes?: number;
+        ultimoAcesso?: Date;
     };
 }
 

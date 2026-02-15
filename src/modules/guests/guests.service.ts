@@ -56,13 +56,26 @@ export class GuestsService {
 
     async findByToken(token: string): Promise<GuestDocument> {
         const guest = await this.guestModel.findOne({ tokenUnico: token }).exec();
+
         if (!guest) {
             throw new NotFoundException('Convite não encontrado');
         }
 
-        // Incrementar visualizações
+        // Verificar se o token já foi utilizado
+        if (guest.tokenUtilizado && guest.confirmado) {
+            throw new BadRequestException('Este convite já foi utilizado por outro dispositivo');
+        }
+
+        // Registrar visualização
+        guest.visualizacoes = guest.visualizacoes || [];
+        guest.visualizacoes.push({
+            data: new Date(),
+        });
+
+        guest.ultimoAcesso = new Date();
         guest.metadata = guest.metadata || {};
         guest.metadata.visualizacoes = (guest.metadata.visualizacoes || 0) + 1;
+
         await guest.save();
 
         return guest;
@@ -70,7 +83,7 @@ export class GuestsService {
 
     async confirmPresence(
         token: string,
-        confirmDto: ConfirmPresenceDto,
+        confirmDto: any,
         metadata?: { ip: string; userAgent: string }
     ): Promise<GuestDocument> {
         this.logger.log(`Confirmando presença para token: ${token}`);
@@ -81,15 +94,20 @@ export class GuestsService {
             throw new BadRequestException('Presença já confirmada anteriormente');
         }
 
+        // Validar acompanhantes
         if (confirmDto.numAcompanhantes > guest.maxAcompanhantes) {
             throw new BadRequestException(
                 `Número máximo de acompanhantes é ${guest.maxAcompanhantes}`
             );
         }
 
+        // Atualizar dados do convidado
         guest.confirmado = confirmDto.confirmado;
         guest.numAcompanhantes = confirmDto.numAcompanhantes;
         guest.confirmadoEm = new Date();
+        guest.acompanhantes = confirmDto.acompanhantes || [];
+        guest.presenteSelecionado = confirmDto.presente;
+        guest.tokenUtilizado = true;
 
         if (metadata) {
             guest.metadata = {
@@ -99,7 +117,7 @@ export class GuestsService {
             };
         }
 
-        return guest.save(); // Agora o TypeScript reconhece o método save()
+        return guest.save();
     }
 
     async update(id: string, updateGuestDto: UpdateGuestDto): Promise<GuestDocument> {
@@ -156,4 +174,5 @@ export class GuestsService {
             porGrupo
         };
     }
+    
 }
