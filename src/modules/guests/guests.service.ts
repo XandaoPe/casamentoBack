@@ -61,9 +61,10 @@ export class GuestsService {
             throw new NotFoundException('Convite não encontrado');
         }
 
-        // Verificar se o token já foi utilizado
-        if (guest.tokenUtilizado && guest.confirmado) {
-            throw new BadRequestException('Este convite já foi utilizado por outro dispositivo');
+        // ✅ Permitir acesso, mas avisar se já foi confirmado
+        if (guest.confirmado) {
+            this.logger.log(`Convite já confirmado acessado: ${guest.nome}`);
+            // Não bloqueia, apenas registra
         }
 
         // Registrar visualização
