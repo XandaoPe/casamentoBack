@@ -1,4 +1,3 @@
-// src/modules/gifts/gifts.service.ts
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -10,10 +9,43 @@ export class GiftsService {
 
     constructor(@InjectModel(Gift.name) private giftModel: Model<GiftDocument>) { }
 
-    async create(data: any): Promise<GiftDocument> {
-        this.logger.log(`Criando presente: ${data.nome}`);
-        return new this.giftModel(data).save();
+    // Auxiliar para processar a imagem
+    private processImage(data: any, file?: Express.Multer.File) {
+        if (file) {
+            // Se você não tiver um storage como S3 ou Cloudinary, 
+            // salvamos como Base64 no banco por enquanto (prático para imagens pequenas)
+            const base64 = file.buffer.toString('base64');
+            data.imagemUrl = `data:${file.mimetype};base64,${base64}`;
+        }
+        return data;
     }
+
+    async create(data: any, file?: Express.Multer.File): Promise<GiftDocument> {
+        // Converter strings do FormData para números reais
+        const preparedData = {
+            ...data,
+            valorTotal: Number(data.valorTotal),
+            totalCotas: Number(data.totalCotas || 1),
+            temCotas: data.temCotas === 'true', // FormData envia "true" como string
+        };
+
+        const giftData = this.processImage(preparedData, file);
+        return new this.giftModel(giftData).save();
+    }
+
+    async update(id: string, data: any, file?: Express.Multer.File) {
+        const preparedData = {
+            ...data,
+            valorTotal: data.valorTotal ? Number(data.valorTotal) : undefined,
+            totalCotas: data.totalCotas ? Number(data.totalCotas) : undefined,
+            temCotas: data.temCotas === 'true',
+        };
+
+        const giftData = this.processImage(preparedData, file);
+        return this.giftModel.findByIdAndUpdate(id, giftData, { new: true }).exec();
+    }
+
+    // ... (restante do código: findAllAtivos, findAllAdmin, remove seguem iguais)
 
     async findAllAtivos(): Promise<GiftDocument[]> {
         return this.giftModel.find({ ativo: true }).sort({ valorTotal: 1 }).exec();
@@ -24,11 +56,9 @@ export class GiftsService {
     }
 
     async buyGift(id: string, quantidade: number): Promise<GiftDocument> {
-        // Buscamos e atualizamos apenas se houver cotas suficientes (Operação Atômica)
         const gift = await this.giftModel.findOneAndUpdate(
             {
                 _id: id,
-                // Garantia de estoque: total - vendidas >= quantidade pedida
                 $expr: { $gte: [{ $subtract: ["$totalCotas", "$cotasVendidas"] }, quantidade] }
             },
             { $inc: { cotasVendidas: quantidade } },
@@ -36,17 +66,12 @@ export class GiftsService {
         ).exec();
 
         if (!gift) {
-            // Se não encontrou, ou o ID é inválido ou as cotas acabaram enquanto ele tentava comprar
             const exists = await this.giftModel.findById(id);
             if (!exists) throw new NotFoundException('Presente não encontrado');
             throw new BadRequestException('Desculpe, este presente ou cota acabou de ser reservado por outro convidado.');
         }
 
         return gift;
-    }
-
-    async update(id: string, data: any) {
-        return this.giftModel.findByIdAndUpdate(id, data, { new: true }).exec();
     }
 
     async remove(id: string): Promise<void> {
