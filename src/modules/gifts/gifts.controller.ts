@@ -14,10 +14,20 @@ export class GiftsController {
         return this.giftsService.findAllAtivos();
     }
 
+    @UseGuards(JwtAuthGuard)
+    @Get('admin')
+    async findAllForAdmin() {
+        return this.giftsService.findAllAdmin();
+    }
+
     @Public()
-    @Post('reserve')
-    @HttpCode(HttpStatus.OK) // Retorna 200 em vez de 201
+    @Post('buy') // Alterado de 'reserve' para 'buy' para coincidir com o Front-end
+    @HttpCode(HttpStatus.OK)
     async reserve(@Body() data: { giftId: string; quantidade: number }) {
+        // Adicione uma validação simples para evitar o 'null' que vimos no log
+        if (!data.quantidade || data.quantidade < 1) {
+            data.quantidade = 1;
+        }
         return this.giftsService.buyGift(data.giftId, data.quantidade);
     }
 

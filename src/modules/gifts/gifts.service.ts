@@ -19,6 +19,10 @@ export class GiftsService {
         return this.giftModel.find({ ativo: true }).sort({ valorTotal: 1 }).exec();
     }
 
+    async findAllAdmin(): Promise<GiftDocument[]> {
+        return this.giftModel.find({}).sort({ createdAt: -1 }).exec();
+    }
+
     async buyGift(id: string, quantidade: number): Promise<GiftDocument> {
         // Buscamos e atualizamos apenas se houver cotas suficientes (Operação Atômica)
         const gift = await this.giftModel.findOneAndUpdate(
