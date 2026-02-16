@@ -10,6 +10,7 @@ import { GuestsModule } from './modules/guests/guests.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { MailerModule } from '@nestjs-modules/mailer';
+import { GiftsModule } from './modules/gifts/gifts.module';
 
 @Module({
   imports: [
@@ -51,7 +52,8 @@ import { MailerModule } from '@nestjs-modules/mailer';
 
     GuestsModule,
     AuthModule,
-    InvitationsModule, // Agora está importado
+    InvitationsModule,
+    GiftsModule,
   ],
   providers: [
     {

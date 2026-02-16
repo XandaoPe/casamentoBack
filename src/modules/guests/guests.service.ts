@@ -5,7 +5,6 @@ import { Model } from 'mongoose';
 import { Guest, GuestDocument } from './schemas/guest.schema';
 import { CreateGuestDto } from './dto/create-guest.dto';
 import { UpdateGuestDto } from './dto/update-guest.dto';
-import { ConfirmPresenceDto } from './dto/confirm-presence.dto';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
