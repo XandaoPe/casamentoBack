@@ -1,19 +1,20 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Gift, GiftDocument } from './schemas/gift.schema';
+import { Reservation, ReservationDocument } from './schemas/reservation.schema';
 
 @Injectable()
 export class GiftsService {
     private readonly logger = new Logger(GiftsService.name);
 
-    constructor(@InjectModel(Gift.name) private giftModel: Model<GiftDocument>) { }
+    constructor(
+        @InjectModel(Gift.name) private giftModel: Model<GiftDocument>,
+        @InjectModel(Reservation.name) private reservationModel: Model<ReservationDocument>
+    ) { }
 
-    // Auxiliar para processar a imagem
     private processImage(data: any, file?: Express.Multer.File) {
         if (file) {
-            // Se você não tiver um storage como S3 ou Cloudinary, 
-            // salvamos como Base64 no banco por enquanto (prático para imagens pequenas)
             const base64 = file.buffer.toString('base64');
             data.imagemUrl = `data:${file.mimetype};base64,${base64}`;
         }
@@ -21,14 +22,12 @@ export class GiftsService {
     }
 
     async create(data: any, file?: Express.Multer.File): Promise<GiftDocument> {
-        // Converter strings do FormData para números reais
         const preparedData = {
             ...data,
             valorTotal: Number(data.valorTotal),
             totalCotas: Number(data.totalCotas || 1),
-            temCotas: data.temCotas === 'true', // FormData envia "true" como string
+            temCotas: String(data.temCotas) === 'true',
         };
-
         const giftData = this.processImage(preparedData, file);
         return new this.giftModel(giftData).save();
     }
@@ -38,14 +37,11 @@ export class GiftsService {
             ...data,
             valorTotal: data.valorTotal ? Number(data.valorTotal) : undefined,
             totalCotas: data.totalCotas ? Number(data.totalCotas) : undefined,
-            temCotas: data.temCotas === 'true',
+            temCotas: String(data.temCotas) === 'true',
         };
-
         const giftData = this.processImage(preparedData, file);
         return this.giftModel.findByIdAndUpdate(id, giftData, { new: true }).exec();
     }
-
-    // ... (restante do código: findAllAtivos, findAllAdmin, remove seguem iguais)
 
     async findAllAtivos(): Promise<GiftDocument[]> {
         return this.giftModel.find({ ativo: true }).sort({ valorTotal: 1 }).exec();
@@ -55,23 +51,38 @@ export class GiftsService {
         return this.giftModel.find({}).sort({ createdAt: -1 }).exec();
     }
 
-    async buyGift(id: string, quantidade: number): Promise<GiftDocument> {
-        const gift = await this.giftModel.findOneAndUpdate(
-            {
-                _id: id,
-                $expr: { $gte: [{ $subtract: ["$totalCotas", "$cotasVendidas"] }, quantidade] }
-            },
-            { $inc: { cotasVendidas: quantidade } },
-            { new: true }
-        ).exec();
+    async buyGift(id: string, quantidade: number, dadosConvidado: { nome: string, mensagem: string }): Promise<any> {
+        const gift = await this.giftModel.findById(id);
+        if (!gift) throw new NotFoundException('Presente não encontrado');
 
-        if (!gift) {
-            const exists = await this.giftModel.findById(id);
-            if (!exists) throw new NotFoundException('Presente não encontrado');
-            throw new BadRequestException('Desculpe, este presente ou cota acabou de ser reservado por outro convidado.');
+        const disponivel = gift.totalCotas - gift.cotasVendidas;
+        if (disponivel < quantidade) {
+            throw new BadRequestException('Quantidade de cotas indisponível');
         }
 
+        // Atualiza as cotas vendidas
+        gift.cotasVendidas += quantidade;
+        await gift.save();
+
+        // Salva quem deu o presente
+        const valorUnitario = gift.valorTotal / gift.totalCotas;
+        const novaReserva = new this.reservationModel({
+            giftId: gift._id,
+            nomeConvidado: dadosConvidado.nome,
+            mensagem: dadosConvidado.mensagem,
+            quantidadeCotas: quantidade,
+            valorPago: valorUnitario * quantidade
+        });
+
+        await novaReserva.save();
         return gift;
+    }
+
+    // NOVO: Busca quem comprou um presente específico
+    async findReservationsByGift(giftId: string): Promise<ReservationDocument[]> {
+        return this.reservationModel.find({ giftId: new Types.ObjectId(giftId) })
+            .sort({ createdAt: -1 })
+            .exec();
     }
 
     async remove(id: string): Promise<void> {
@@ -79,5 +90,7 @@ export class GiftsService {
         if (result.deletedCount === 0) {
             throw new NotFoundException('Presente não encontrado');
         }
+        // Opcional: Remover reservas vinculadas ao excluir presente
+        await this.reservationModel.deleteMany({ giftId: new Types.ObjectId(id) }).exec();
     }
 }
