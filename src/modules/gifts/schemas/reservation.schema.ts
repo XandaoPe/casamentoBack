@@ -1,13 +1,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
-// A exportação deste tipo é crucial para o Service
 export type ReservationDocument = Reservation & Document;
 
 @Schema({ timestamps: true })
 export class Reservation {
     @Prop({ type: Types.ObjectId, ref: 'Gift', required: true })
     giftId: Types.ObjectId;
+
+    // Novo campo para vínculo absoluto
+    @Prop({ type: Types.ObjectId, ref: 'Guest', required: true })
+    guestId: Types.ObjectId;
 
     @Prop({ required: true })
     nomeConvidado: string;

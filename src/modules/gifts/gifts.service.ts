@@ -51,7 +51,11 @@ export class GiftsService {
         return this.giftModel.find({}).sort({ createdAt: -1 }).exec();
     }
 
-    async buyGift(id: string, quantidade: number, dadosConvidado: { nome: string, mensagem: string }): Promise<any> {
+    async buyGift(
+        id: string,
+        quantidade: number,
+        dadosConvidado: { guestId: string, nome: string, mensagem: string }
+    ): Promise<any> {
         const gift = await this.giftModel.findById(id);
         if (!gift) throw new NotFoundException('Presente não encontrado');
 
@@ -60,14 +64,13 @@ export class GiftsService {
             throw new BadRequestException('Quantidade de cotas indisponível');
         }
 
-        // Atualiza as cotas vendidas
         gift.cotasVendidas += quantidade;
         await gift.save();
 
-        // Salva quem deu o presente
         const valorUnitario = gift.valorTotal / gift.totalCotas;
         const novaReserva = new this.reservationModel({
             giftId: gift._id,
+            guestId: new Types.ObjectId(dadosConvidado.guestId), // Vínculo por ID
             nomeConvidado: dadosConvidado.nome,
             mensagem: dadosConvidado.mensagem,
             quantidadeCotas: quantidade,
@@ -78,11 +81,39 @@ export class GiftsService {
         return gift;
     }
 
-    // NOVO: Busca quem comprou um presente específico
+    async findReservationsByGuestId(guestId: string): Promise<ReservationDocument[]> {
+        return this.reservationModel.find({ guestId: new Types.ObjectId(guestId) })
+            .populate('giftId')
+            .sort({ createdAt: -1 })
+            .exec();
+    }
+
     async findReservationsByGift(giftId: string): Promise<ReservationDocument[]> {
         return this.reservationModel.find({ giftId: new Types.ObjectId(giftId) })
             .sort({ createdAt: -1 })
             .exec();
+    }
+
+    async findReservationsByGuestName(nome: string): Promise<ReservationDocument[]> {
+        return this.reservationModel.find({
+            nomeConvidado: { $regex: new RegExp(`^${nome}$`, 'i') } // Busca ignorando maiúsculas/minúsculas
+        })
+            .populate('giftId')
+            .sort({ createdAt: -1 })
+            .exec();
+    }
+
+    async removeReservation(reservationId: string): Promise<void> {
+        const reservation = await this.reservationModel.findById(reservationId);
+        if (!reservation) throw new NotFoundException('Reserva não encontrada');
+
+        const gift = await this.giftModel.findById(reservation.giftId);
+        if (gift) {
+            gift.cotasVendidas = Math.max(0, gift.cotasVendidas - reservation.quantidadeCotas);
+            await gift.save();
+        }
+
+        await this.reservationModel.deleteOne({ _id: reservationId }).exec();
     }
 
     async remove(id: string): Promise<void> {
@@ -90,7 +121,6 @@ export class GiftsService {
         if (result.deletedCount === 0) {
             throw new NotFoundException('Presente não encontrado');
         }
-        // Opcional: Remover reservas vinculadas ao excluir presente
         await this.reservationModel.deleteMany({ giftId: new Types.ObjectId(id) }).exec();
     }
 }

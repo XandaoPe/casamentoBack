@@ -11,7 +11,8 @@ import {
     HttpStatus,
     UseInterceptors,
     UploadedFile,
-    BadRequestException
+    BadRequestException,
+    Query
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { GiftsService } from './gifts.service';
@@ -37,24 +38,26 @@ export class GiftsController {
     @HttpCode(HttpStatus.OK)
     async reserve(@Body() data: {
         giftId: string;
+        guestId: string; // Novo campo esperado
         quantidade: number;
         nome: string;
         mensagem: string
     }) {
-        // Validação básica dos dados de entrada
-        if (!data.giftId) {
-            throw new BadRequestException('ID do presente é obrigatório');
-        }
-        if (!data.nome) {
-            throw new BadRequestException('Seu nome é obrigatório para identificar o presente');
+        if (!data.giftId || !data.guestId) {
+            throw new BadRequestException('Dados incompletos para reserva');
         }
 
-        const qtd = data.quantidade || 1;
-
-        return this.giftsService.buyGift(data.giftId, qtd, {
+        return this.giftsService.buyGift(data.giftId, data.quantidade || 1, {
+            guestId: data.guestId,
             nome: data.nome,
             mensagem: data.mensagem
         });
+    }
+
+    @Public()
+    @Get('reservations/by-guest/:guestId')
+    async getByGuestId(@Param('guestId') guestId: string) {
+        return this.giftsService.findReservationsByGuestId(guestId);
     }
 
     /**
@@ -99,5 +102,24 @@ export class GiftsController {
     @Delete('admin/:id')
     async remove(@Param('id') id: string) {
         return this.giftsService.remove(id);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Delete('reservation/admin/:id')
+    async removeReservationAdmin(@Param('id') id: string) {
+        return this.giftsService.removeReservation(id);
+    }
+
+    // Rota pública para o convidado (usar na página de convite)
+    @Public()
+    @Delete('reservation/guest/:id')
+    async removeReservationGuest(@Param('id') id: string) {
+        return this.giftsService.removeReservation(id);
+    }
+
+    @Public()
+    @Get('reservations/by-name')
+    async getReservationsByName(@Query('nome') nome: string) {
+        return this.giftsService.findReservationsByGuestName(nome);
     }
 }
